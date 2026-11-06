@@ -204,7 +204,7 @@
     var z0 = H - rho;          // sphere centre height
 
     // Pane plane: point (v, u): x = v (across), w = u/SQRT2 (horizontal along tilt),
-    // z = zc + u/SQRT2. u measured from the widest-point line.
+    // z = zc + u/SQRT2. u measured from the widest-point line (can be negative).
     function inside(u, v) {
       var w = u / SQRT2;
       var z = zc + u / SQRT2;
@@ -234,17 +234,18 @@
       vMax.push(hi);
     }
 
-    if (vMin[Math.floor(NV / 2)] === null) {
+    var mid = Math.floor(NV / 2);
+    if (vMin[mid] === null) {
       err("The pane does not intersect the jar interior with these settings — check the numbers.");
       return;
     }
 
-    // Key dimensions
-    var mid = Math.floor(NV / 2);
-    var L = vMax[mid];                       // overall length along pane (mm)
+    // Key dimensions (u can be negative; extent = uMax - uMin)
+    var uMin = vMin[mid], uMax = vMax[mid];
+    var L = uMax - uMin;                     // overall length along pane (mm)
     var W = 2 * R;                           // overall width (mm)
-    var zBack  = zc + vMin[mid] / SQRT2;     // height of rear tip
-    var zFront = zc + vMax[mid] / SQRT2;     // height of front tip
+    var zBack  = zc + uMin / SQRT2;          // height of rear tip
+    var zFront = zc + uMax / SQRT2;          // height of front tip
     var floorClamped = (zBack < 0.05);
 
     // Warnings
@@ -255,13 +256,25 @@
       warnings.push("The fitted dome is flatter than a hemisphere (overhanging shoulder). The computed outline assumes the dome meets the wall smoothly — verify the fit physically.");
     if (zFront >= H - 0.5 && !floorClamped)
       warnings.push("The front tip nearly reaches the dome apex — check it clears the top of the jar.");
-    if (W > 186 || L > 267)
-      warnings.push("At 1:1 this template exceeds A4 (" + W.toFixed(0) + " × " + L.toFixed(0) +
-        " mm). Print at " + Math.min(186 / W, 267 / L).toFixed(2) + "× scale or tile across pages.");
+
+    // Printed footprint check (A4 portrait printable area with ~8 mm margins)
+    var ML = 8, MT = 10, MR = 12, MB = 24;   // drawing margins, mm
+    var SW = W + ML + MR, SH = L + MT + MB;
+    if (SW > 194 && SH > 281) {
+      warnings.push("At 1:1 this template exceeds A4 in both directions (" + W.toFixed(0) +
+        " × " + L.toFixed(0) + " mm shape). Print across multiple pages and tape the tiles together.");
+    } else if (SW > 194) {
+      warnings.push("Template is wider than A4 portrait (" + W.toFixed(0) +
+        " mm). Print in landscape orientation or across two pages taped together.");
+    } else if (SH > 281) {
+      warnings.push("Template is longer than A4 portrait (" + L.toFixed(0) +
+        " mm). Print across two pages taped together, aligning on the centreline.");
+    }
 
     // Spec table
     var html = "<h2>Computed pane</h2><table class='specs'>" +
       "<tr><td>Template size (width × length)</td><td>" + W.toFixed(1) + " × " + L.toFixed(1) + " mm</td></tr>" +
+      "<tr><td>Printed sheet footprint (incl. labels)</td><td>" + SW.toFixed(0) + " × " + SH.toFixed(0) + " mm</td></tr>" +
       "<tr><td>Widest points touch wall at height</td><td>" + (zc / 10).toFixed(2) + " cm</td></tr>" +
       "<tr><td>Rear tip touches wall/floor at height</td><td>" + (Math.max(zBack, 0) / 10).toFixed(2) + " cm</td></tr>" +
       "<tr><td>Front tip touches dome at height</td><td>" + (zFront / 10).toFixed(2) + " cm" +
@@ -276,16 +289,14 @@
     results.innerHTML = html;
 
     // ---------- Build SVG (user units = mm, printed at true size) ----------
-    var ML = 16, MT = 10, MR = 30, MB = 26;   // margins for labels
-    var SW = W + ML + MR, SH = L + MT + MB;
     var ns = "http://www.w3.org/2000/svg";
     var svg = document.createElementNS(ns, "svg");
     svg.setAttribute("width", SW + "mm");
     svg.setAttribute("height", SH + "mm");
     svg.setAttribute("viewBox", "0 0 " + SW + " " + SH);
 
-    function X(vv) { return ML + vv + R; }   // v: -R..R -> 0..W
-    function Y(uu) { return MT + uu; }       // u: 0..L top-to-bottom
+    function X(vv) { return ML + vv + R; }              // v: -R..R -> 0..W
+    function Y(uu) { return MT + (uu - uMin); }         // u shifted so rear tip = MT
 
     function el(name, attrs, parent) {
       var e = document.createElementNS(ns, name);
@@ -318,7 +329,7 @@
     el("path", { d: d, fill: "none", stroke: "#000", "stroke-width": 0.5 });
 
     // Centreline
-    el("line", { x1: X(0), y1: Y(vMin[mid]), x2: X(0), y2: Y(L),
+    el("line", { x1: X(0), y1: Y(uMin), x2: X(0), y2: Y(uMax),
       stroke: "#000", "stroke-width": 0.25, "stroke-dasharray": "2,1.5" });
 
     // Widest-point marks
@@ -328,18 +339,26 @@
     txt(X(R) + 2,  Y(0) - 1.5, "touch wall", "start", 2.8);
 
     // Tip labels
-    txt(X(0), Y(vMin[mid]) - 2, "REAR TIP \u2014 wall at " + (Math.max(zBack,0)/10).toFixed(1) + " cm" + (floorClamped ? " (floor)" : ""), "middle", 2.8);
-    txt(X(0), Y(L) + 5, "FRONT TIP \u2014 " + (zFront > hc ? "dome" : "wall") + " at " + (zFront/10).toFixed(1) + " cm", "middle", 2.8);
+    txt(X(0), Y(uMin) - 2.5, "REAR TIP \u2014 wall at " + (Math.max(zBack,0)/10).toFixed(1) + " cm" + (floorClamped ? " (floor)" : ""), "middle", 2.8);
+    txt(X(0), Y(uMax) + 5, "FRONT TIP \u2014 " + (zFront > hc ? "dome" : "wall") + " at " + (zFront/10).toFixed(1) + " cm", "middle", 2.8);
 
-    // Width dimension (below rear tip)
-    el("line", { x1: X(-R), y1: Y(vMin[mid]) + 8, x2: X(R), y2: Y(vMin[mid]) + 8, stroke: "#555", "stroke-width": 0.25 });
-    txt(W / 2 + ML, Y(vMin[mid]) + 12, "WIDTH " + W.toFixed(1) + " mm", "middle", 3.2, "bold");
+    // Width dimension (just below rear tip)
+    var wy = Y(uMin) + 9;
+    el("line", { x1: X(-R), y1: wy, x2: X(R), y2: wy, stroke: "#555", "stroke-width": 0.25 });
+    el("line", { x1: X(-R), y1: wy - 1.5, x2: X(-R), y2: wy + 1.5, stroke: "#555", "stroke-width": 0.25 });
+    el("line", { x1: X(R),  y1: wy - 1.5, x2: X(R),  y2: wy + 1.5, stroke: "#555", "stroke-width": 0.25 });
+    txt(X(0), wy + 4.5, "WIDTH " + W.toFixed(1) + " mm", "middle", 3.2, "bold");
 
     // Length dimension (right side)
-    el("line", { x1: X(R) + 10, y1: Y(0), x2: X(R) + 10, y2: Y(L), stroke: "#555", "stroke-width": 0.25 });
+    var lx = X(R) + 6;
+    el("line", { x1: lx, y1: Y(uMin), x2: lx, y2: Y(uMax), stroke: "#555", "stroke-width": 0.25 });
+    el("line", { x1: lx - 1.5, y1: Y(uMin), x2: lx + 1.5, y2: Y(uMin), stroke: "#555", "stroke-width": 0.25 });
+    el("line", { x1: lx - 1.5, y1: Y(uMax), x2: lx + 1.5, y2: Y(uMax), stroke: "#555", "stroke-width": 0.25 });
     var lt = txt(0, 0, "LENGTH " + L.toFixed(1) + " mm", "middle", 3.2, "bold");
-    lt.setAttribute("transform", "rotate(90 " + (X(R) + 13) + " " + (Y(L) / 2) + ") translate(" + (X(R) + 13) + " " + (Y(L) / 2) + ")");
-    lt.setAttribute("x", 0); lt.setAttribute("y", 0);
+    lt.setAttribute("transform", "rotate(90 " + (lx + 2.5) + " " + (Y((uMin + uMax) / 2)) + ") translate(0 -2.5)");
+    // simpler: place rotated text directly
+    lt.setAttribute("x", lx + 2.5);
+    lt.setAttribute("y", Y((uMin + uMax) / 2));
 
     // Calibration bar (bottom-left)
     var cbY = SH - 6, cbX = ML;
@@ -353,11 +372,11 @@
 
     // Print note
     var note = document.getElementById("printNote");
-    if (SW <= 190 && SH <= 277) {
+    if (SW <= 194 && SH <= 281) {
       note.innerHTML = "This template fits a single A4 page at true 1:1 scale. Print at <strong>100% / actual size</strong> (disable “fit to page”), then verify the calibration bar measures exactly 100 mm. Cut ~0.5–1 mm proud of the line and sand down while test-fitting.";
     } else {
       note.innerHTML = "This template is larger than A4 at 1:1 (" + SW.toFixed(0) + " × " + SH.toFixed(0) +
-        " mm). Print across multiple pages at 100% and tape the tiles together, or scale down uniformly and enlarge on a photocopier, verifying with the calibration bar.";
+        " mm sheet footprint). Print across multiple pages at 100% and tape the tiles together, aligning the centreline, or scale down uniformly and enlarge on a photocopier, verifying with the calibration bar.";
     }
 
     area.style.display = "block";
