@@ -137,11 +137,11 @@
       </div>
       <div class="field">
         <label>Curve-start height (cm)</label>
-        <span class="hint">where the straight wall begins to curve; blank &rArr; hemisphere assumption</span>
+        <span class="hint">where the straight wall begins to curve; if you leave this blank &rArr; hemisphere assumption</span>
         <input type="number" step="0.1" min="0" id="curvestart" value="19">
       </div>
       <div class="field">
-        <label>Pane contact height (cm) leave blank if you're not sure</label>
+        <label>Pane contact height (cm) (leave blank if you're not sure)</label>
         <span class="hint">height of the pane&rsquo;s widest points on the wall; blank &rArr; curve-start height</span>
         <input type="number" step="0.1" min="0" id="paneheight" value="">
       </div>
@@ -373,7 +373,7 @@
     // Print note
     var note = document.getElementById("printNote");
     if (SW <= 194 && SH <= 281) {
-      note.innerHTML = "This template fits a single A4 page at true 1:1 scale. Print at <strong>100% / actual size</strong> (disable “fit to page”), then verify the calibration bar measures exactly 100 mm. If using a sold acrylic sheet instead of a test with a bendable acetate sheet, cut ~0.5–1 mm proud of the line and sand down while test-fitting.";
+      note.innerHTML = "This template fits a single A4 page at true 1:1 scale. Print at <strong>100% / actual size</strong> (disable “fit to page”), then verify the calibration bar measures exactly 100 mm. (If using a solid acrylic sheet instead of a bendable acetate sheet, cut ~0.5–1 mm proud of the line and sand down while test-fitting.)";
     } else {
       note.innerHTML = "This template is larger than A4 at 1:1 (" + SW.toFixed(0) + " × " + SH.toFixed(0) +
         " mm sheet footprint). Print across multiple pages at 100% and tape the tiles together, aligning the centreline, or scale down uniformly and enlarge on a photocopier, verifying with the calibration bar.";
