@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pepper's Ghost Jar Pane Template Generator</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: Helvetica, Arial, sans-serif;
+    color: #1a1a2e;
+    background: #faf8ff;
+    margin: 0;
+    padding: 16px;
+    line-height: 1.5;
+  }
+  .widget {
+    max-width: 860px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 1.35rem; margin: 0 0 4px 0; }
+  p.sub { color: #555; font-size: 0.9rem; margin: 0 0 18px 0; }
+  .controls {
+    background: #fff;
+    border: 1px solid #ddd0f5;
+    border-radius: 10px;
+    padding: 16px 18px;
+    margin-bottom: 18px;
+  }
+  .fieldrow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    align-items: flex-end;
+  }
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .field label { font-size: 0.82rem; font-weight: bold; }
+  .field .hint { font-size: 0.72rem; color: #777; font-weight: normal; }
+  .field input {
+    width: 110px;
+    padding: 7px 8px;
+    border: 1px solid #bbb;
+    border-radius: 6px;
+    font-size: 0.95rem;
+  }
+  button {
+    background: #6d4aff;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 20px;
+    font-size: 0.95rem;
+    font-weight: bold;
+    cursor: pointer;
+  }
+  button:hover { background: #5a38e6; }
+  button.secondary {
+    background: #eee9fb;
+    color: #4a2ecc;
+    border: 1px solid #c9bcf0;
+  }
+  .results {
+    background: #fff;
+    border: 1px solid #ddd0f5;
+    border-radius: 10px;
+    padding: 16px 18px;
+    margin-bottom: 18px;
+    display: none;
+  }
+  .results h2 { font-size: 1.05rem; margin: 0 0 10px 0; }
+  table.specs { border-collapse: collapse; font-size: 0.88rem; }
+  table.specs td { padding: 3px 14px 3px 0; }
+  table.specs td:first-child { color: #555; }
+  table.specs td:last-child { font-weight: bold; }
+  .warnings { margin-top: 10px; }
+  .warning {
+    background: #fff7e6;
+    border: 1px solid #f0dfa8;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 0.84rem;
+    margin-bottom: 6px;
+  }
+  .error {
+    background: #fdeaea;
+    border: 1px solid #eec3c3;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 0.84rem;
+    margin-bottom: 6px;
+  }
+  .template-area {
+    background: #fff;
+    border: 1px solid #ddd0f5;
+    border-radius: 10px;
+    padding: 16px 18px;
+    display: none;
+  }
+  .template-area h2 { font-size: 1.05rem; margin: 0 0 6px 0; }
+  .print-note { font-size: 0.84rem; color: #555; margin: 0 0 12px 0; }
+  .btnrow { margin: 12px 0 14px 0; display: flex; gap: 10px; }
+  #sheet { overflow-x: auto; }
+  svg { display: block; }
+  @media print {
+    body { background: #fff; padding: 0; }
+    .controls, .results, .no-print, h1, p.sub { display: none !important; }
+    .template-area {
+      display: block !important;
+      border: none;
+      padding: 0;
+      margin: 0;
+    }
+    .btnrow { display: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="widget">
+  <h1>Pepper&rsquo;s Ghost Jar Pane &mdash; Template Generator</h1>
+  <p class="sub">Enter the <em>interior</em> measurements of your jar in cm. The generator fits a
+  cylindrical body with a spherical dome cap, slices it with a 45&deg; plane, and draws a true-scale
+  printable cutting template.</p>
+
+  <div class="controls no-print">
+    <div class="fieldrow">
+      <div class="field">
+        <label>Interior bottom diameter (cm)</label>
+        <input type="number" step="0.1" min="1" id="diam" value="15.4">
+      </div>
+      <div class="field">
+        <label>Total interior height (cm)</label>
+        <input type="number" step="0.1" min="1" id="height" value="27">
+      </div>
+      <div class="field">
+        <label>Curve-start height (cm)</label>
+        <span class="hint">where the straight wall begins to curve; blank &rArr; hemisphere assumption</span>
+        <input type="number" step="0.1" min="0" id="curvestart" value="19">
+      </div>
+      <div class="field">
+        <label>Pane contact height (cm)</label>
+        <span class="hint">height of the pane&rsquo;s widest points on the wall; blank &rArr; curve-start height</span>
+        <input type="number" step="0.1" min="0" id="paneheight" value="">
+      </div>
+      <button id="generate">Generate template</button>
+    </div>
+  </div>
+
+  <div class="results" id="results"></div>
+
+  <div class="template-area" id="templateArea">
+    <h2 class="no-print">Cutting template (1:1)</h2>
+    <p class="print-note no-print" id="printNote"></p>
+    <div class="btnrow no-print">
+      <button onclick="window.print()">Print template</button>
+    </div>
+    <div id="sheet"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var SQRT2 = Math.sqrt(2);
+
+  function generate() {
+    var Dcm  = parseFloat(document.getElementById("diam").value);
+    var Hcm  = parseFloat(document.getElementById("height").value);
+    var csCm = parseFloat(document.getElementById("curvestart").value);
+    var phCm = parseFloat(document.getElementById("paneheight").value);
+
+    var results = document.getElementById("results");
+    var area    = document.getElementById("templateArea");
+    var sheet   = document.getElementById("sheet");
+    results.innerHTML = "";
+    sheet.innerHTML = "";
+    area.style.display = "none";
+    results.style.display = "block";
+
+    function err(msg) {
+      results.innerHTML = '<div class="error">' + msg + "</div>";
+    }
+
+    if (isNaN(Dcm) || isNaN(Hcm) || Dcm <= 0 || Hcm <= 0) {
+      err("Please enter a positive diameter and total height."); return;
+    }
+    var R = Dcm * 10 / 2;      // mm
+    var H = Hcm * 10;          // mm
+    var hc = isNaN(csCm) ? (H - R) : csCm * 10;   // dome-start height, mm
+    var zc = isNaN(phCm) ? hc : phCm * 10;        // pane contact height, mm
+
+    if (hc <= 0 || hc >= H) {
+      err("Curve-start height must be between 0 and the total height."); return;
+    }
+    if (zc < 0 || zc > H) {
+      err("Pane contact height must be between 0 and the total height."); return;
+    }
+
+    // Fit spherical cap through (R, hc) with apex at (0, H)
+    var rise = H - hc;
+    var rho = (R * R + rise * rise) / (2 * rise);
+    var z0 = H - rho;          // sphere centre height
+
+    // Pane plane: point (v, u): x = v (across), w = u/SQRT2 (horizontal along tilt),
+    // z = zc + u/SQRT2. u measured from the widest-point line.
+    function inside(u, v) {
+      var w = u / SQRT2;
+      var z = zc + u / SQRT2;
+      if (z < 0 || z > H) return false;
+      if (z <= hc) return (w * w + v * v) <= R * R;
+      var dz = z - z0;
+      return (w * w + v * v + dz * dz) <= rho * rho;
+    }
+
+    // Scan outline
+    var NV = 220;
+    var uLo = -SQRT2 * zc - 1;        // floor limit minus margin
+    var uHi =  SQRT2 * (H - zc) + 1;  // apex limit plus margin
+    var step = Math.max(0.08, (uHi - uLo) / 4000);
+    var vMin = [], vMax = [];
+    var i, j, u, v;
+    for (i = 0; i <= NV; i++) {
+      v = -R + (2 * R) * i / NV;
+      var lo = null, hi = null;
+      for (u = uLo; u <= uHi; u += step) {
+        if (inside(u, v)) {
+          if (lo === null) lo = u;
+          hi = u;
+        }
+      }
+      vMin.push(lo);
+      vMax.push(hi);
+    }
+
+    if (vMin[Math.floor(NV / 2)] === null) {
+      err("The pane does not intersect the jar interior with these settings — check the numbers.");
+      return;
+    }
+
+    // Key dimensions
+    var mid = Math.floor(NV / 2);
+    var L = vMax[mid];                       // overall length along pane (mm)
+    var W = 2 * R;                           // overall width (mm)
+    var zBack  = zc + vMin[mid] / SQRT2;     // height of rear tip
+    var zFront = zc + vMax[mid] / SQRT2;     // height of front tip
+    var floorClamped = (zBack < 0.05);
+
+    // Warnings
+    var warnings = [];
+    if (floorClamped)
+      warnings.push("The rear of the pane reaches the jar floor — its back edge will be a straight line resting on the base.");
+    if (rho < R)
+      warnings.push("The fitted dome is flatter than a hemisphere (overhanging shoulder). The computed outline assumes the dome meets the wall smoothly — verify the fit physically.");
+    if (zFront >= H - 0.5 && !floorClamped)
+      warnings.push("The front tip nearly reaches the dome apex — check it clears the top of the jar.");
+    if (W > 186 || L > 267)
+      warnings.push("At 1:1 this template exceeds A4 (" + W.toFixed(0) + " × " + L.toFixed(0) +
+        " mm). Print at " + Math.min(186 / W, 267 / L).toFixed(2) + "× scale or tile across pages.");
+
+    // Spec table
+    var html = "<h2>Computed pane</h2><table class='specs'>" +
+      "<tr><td>Template size (width × length)</td><td>" + W.toFixed(1) + " × " + L.toFixed(1) + " mm</td></tr>" +
+      "<tr><td>Widest points touch wall at height</td><td>" + (zc / 10).toFixed(2) + " cm</td></tr>" +
+      "<tr><td>Rear tip touches wall/floor at height</td><td>" + (Math.max(zBack, 0) / 10).toFixed(2) + " cm</td></tr>" +
+      "<tr><td>Front tip touches dome at height</td><td>" + (zFront / 10).toFixed(2) + " cm" +
+        (zFront <= hc ? " (below dome start — pane touches wall only)" : "") + "</td></tr>" +
+      "<tr><td>Fitted dome radius</td><td>" + (rho / 10).toFixed(2) + " cm (centre at " + (z0 / 10).toFixed(2) + " cm)</td></tr>" +
+      "</table>";
+    if (warnings.length) {
+      html += "<div class='warnings'>";
+      warnings.forEach(function (w) { html += "<div class='warning'>⚠ " + w + "</div>"; });
+      html += "</div>";
+    }
+    results.innerHTML = html;
+
+    // ---------- Build SVG (user units = mm, printed at true size) ----------
+    var ML = 16, MT = 10, MR = 30, MB = 26;   // margins for labels
+    var SW = W + ML + MR, SH = L + MT + MB;
+    var ns = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("width", SW + "mm");
+    svg.setAttribute("height", SH + "mm");
+    svg.setAttribute("viewBox", "0 0 " + SW + " " + SH);
+
+    function X(vv) { return ML + vv + R; }   // v: -R..R -> 0..W
+    function Y(uu) { return MT + uu; }       // u: 0..L top-to-bottom
+
+    function el(name, attrs, parent) {
+      var e = document.createElementNS(ns, name);
+      for (var k in attrs) e.setAttribute(k, attrs[k]);
+      (parent || svg).appendChild(e);
+      return e;
+    }
+    function txt(x, y, s, anchor, size, weight) {
+      var t = el("text", { x: x, y: y, "text-anchor": anchor || "middle",
+        "font-family": "Helvetica, Arial, sans-serif",
+        "font-size": size || 3.2, fill: "#111" });
+      if (weight) t.setAttribute("font-weight", weight);
+      t.textContent = s;
+      return t;
+    }
+
+    // Outline path (front/top edge then back/bottom edge)
+    var d = "", first = true;
+    for (i = 0; i <= NV; i++) {
+      if (vMax[i] === null) continue;
+      d += (first ? "M" : "L") + X(-R + 2 * R * i / NV).toFixed(2) + "," + Y(vMax[i]).toFixed(2);
+      first = false;
+    }
+    for (i = NV; i >= 0; i--) {
+      if (vMin[i] === null) continue;
+      d += "L" + X(-R + 2 * R * i / NV).toFixed(2) + "," + Y(vMin[i]).toFixed(2);
+    }
+    d += "Z";
+    el("path", { d: d, fill: "#efeaff", "fill-opacity": 0.45, stroke: "none" });
+    el("path", { d: d, fill: "none", stroke: "#000", "stroke-width": 0.5 });
+
+    // Centreline
+    el("line", { x1: X(0), y1: Y(vMin[mid]), x2: X(0), y2: Y(L),
+      stroke: "#000", "stroke-width": 0.25, "stroke-dasharray": "2,1.5" });
+
+    // Widest-point marks
+    el("circle", { cx: X(-R), cy: Y(0), r: 0.7, fill: "#000" });
+    el("circle", { cx: X(R),  cy: Y(0), r: 0.7, fill: "#000" });
+    txt(X(-R) - 2, Y(0) - 1.5, "touch wall", "end", 2.8);
+    txt(X(R) + 2,  Y(0) - 1.5, "touch wall", "start", 2.8);
+
+    // Tip labels
+    txt(X(0), Y(vMin[mid]) - 2, "REAR TIP \u2014 wall at " + (Math.max(zBack,0)/10).toFixed(1) + " cm" + (floorClamped ? " (floor)" : ""), "middle", 2.8);
+    txt(X(0), Y(L) + 5, "FRONT TIP \u2014 " + (zFront > hc ? "dome" : "wall") + " at " + (zFront/10).toFixed(1) + " cm", "middle", 2.8);
+
+    // Width dimension (below rear tip)
+    el("line", { x1: X(-R), y1: Y(vMin[mid]) + 8, x2: X(R), y2: Y(vMin[mid]) + 8, stroke: "#555", "stroke-width": 0.25 });
+    txt(W / 2 + ML, Y(vMin[mid]) + 12, "WIDTH " + W.toFixed(1) + " mm", "middle", 3.2, "bold");
+
+    // Length dimension (right side)
+    el("line", { x1: X(R) + 10, y1: Y(0), x2: X(R) + 10, y2: Y(L), stroke: "#555", "stroke-width": 0.25 });
+    var lt = txt(0, 0, "LENGTH " + L.toFixed(1) + " mm", "middle", 3.2, "bold");
+    lt.setAttribute("transform", "rotate(90 " + (X(R) + 13) + " " + (Y(L) / 2) + ") translate(" + (X(R) + 13) + " " + (Y(L) / 2) + ")");
+    lt.setAttribute("x", 0); lt.setAttribute("y", 0);
+
+    // Calibration bar (bottom-left)
+    var cbY = SH - 6, cbX = ML;
+    el("line", { x1: cbX, y1: cbY, x2: cbX + 100, y2: cbY, stroke: "#000", "stroke-width": 0.5 });
+    for (j = 0; j <= 10; j++) {
+      el("line", { x1: cbX + j * 10, y1: cbY, x2: cbX + j * 10, y2: cbY - (j % 5 === 0 ? 4 : 2.5), stroke: "#000", "stroke-width": 0.4 });
+    }
+    txt(cbX + 50, cbY + 5, "CALIBRATION \u2014 must measure 100 mm at 100% print scale", "middle", 3);
+
+    sheet.appendChild(svg);
+
+    // Print note
+    var note = document.getElementById("printNote");
+    if (SW <= 190 && SH <= 277) {
+      note.innerHTML = "This template fits a single A4 page at true 1:1 scale. Print at <strong>100% / actual size</strong> (disable “fit to page”), then verify the calibration bar measures exactly 100 mm. Cut ~0.5–1 mm proud of the line and sand down while test-fitting.";
+    } else {
+      note.innerHTML = "This template is larger than A4 at 1:1 (" + SW.toFixed(0) + " × " + SH.toFixed(0) +
+        " mm). Print across multiple pages at 100% and tape the tiles together, or scale down uniformly and enlarge on a photocopier, verifying with the calibration bar.";
+    }
+
+    area.style.display = "block";
+    area.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  document.getElementById("generate").addEventListener("click", generate);
+})();
+</script>
+</body>
+</html>
